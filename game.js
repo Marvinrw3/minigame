@@ -38,6 +38,12 @@ const STORM_DARK = 0.36; // Abdunkelung 0..1
 const CAVEMAN_STORM_DURATION = 3.6; // caveman: länger
 const CAVEMAN_STORM_DARK = 0.72; // caveman: dunkler
 
+// Juice: Screenshake (px) + Abklingen
+const SHAKE_CATCH = 3;
+const SHAKE_MISS = 7;
+const SHAKE_CAVEMAN = 14;
+const SHAKE_DECAY = 45; // px/s
+
 // ---- Farben (Anthropic-/Claude-Code-Look) ----------------------------------
 const COLOR = {
   anthropic: "#D97757",
@@ -71,6 +77,9 @@ const state = {
   rescued: [], // gerettete Mitglieder (für Endscreen, Schritt 4)
   toast: null, // { text, age }
   storm: null, // { age, duration, intensity, boltX, heavy }
+  particles: [], // kleine Effekt-Partikel
+  shakeMag: 0, // aktuelle Screenshake-Stärke (px)
+  sebastian: { mood: "neutral", timer: 0, heavy: false }, // Gott-Stimmung
   spawnTimer: 0,
   floaterSpawnTimer: 1.0,
 };
@@ -153,7 +162,10 @@ function catchDuck(d) {
     state.rescued.push(d.member);
   }
   showToast("Danke für die Rettung, " + d.member.name);
-  // Quak-Sound folgt in Schritt 5.
+  playQuak();
+  spawnParticles(d.x, d.y, "#ffe27a", 10, 90);
+  addShake(SHAKE_CATCH);
+  emitRescue({ name: d.member.name }); // Sebastian strahlt
 }
 
 function showToast(text) {
@@ -170,11 +182,48 @@ function emitMissCatch(info) {
   for (const fn of missCatchListeners) fn(info);
 }
 
-// Donner-Sound (relativer Pfad). Abspielen erfolgt im Klick-Kontext = User-Geste.
+// Rescue-Hook — Sebastian strahlt bei jeder Rettung (analog zum Fehlfang-Hook).
+const rescueListeners = [];
+function onRescue(fn) {
+  rescueListeners.push(fn);
+}
+function emitRescue(info) {
+  for (const fn of rescueListeners) fn(info);
+}
+
+// Sounds (relative Pfade). Abspielen im Klick-Kontext = User-Geste. Lautstärken dezent.
 const donnerSound = new Audio("assets/donner.mp3");
+donnerSound.volume = 0.55;
+const quakSound = new Audio("assets/quak.mp3");
+quakSound.volume = 0.5;
 function playDonner() {
   donnerSound.currentTime = 0;
   donnerSound.play().catch(() => {});
+}
+function playQuak() {
+  quakSound.currentTime = 0;
+  quakSound.play().catch(() => {});
+}
+
+// Partikel + Screenshake (leichtes Juice)
+function spawnParticles(x, y, color, count, speed) {
+  for (let i = 0; i < count; i++) {
+    const a = Math.random() * Math.PI * 2;
+    const sp = speed * (0.3 + Math.random() * 0.7);
+    state.particles.push({
+      x,
+      y,
+      vx: Math.cos(a) * sp,
+      vy: Math.sin(a) * sp - 30,
+      life: 0.5 + Math.random() * 0.3,
+      maxLife: 0.8,
+      size: 2 + Math.random() * 2.5,
+      color,
+    });
+  }
+}
+function addShake(m) {
+  state.shakeMag = Math.max(state.shakeMag, m);
 }
 
 function catchFloater(f) {
@@ -183,7 +232,9 @@ function catchFloater(f) {
   state.score -= heavy ? CAVEMAN_PENALTY : FLOATER_PENALTY;
   startStorm(heavy);
   playDonner();
-  emitMissCatch({ name: f.name, heavy }); // Schritt 5: Sebastians Feuer-Reaktion
+  spawnParticles(f.x, f.y, heavy ? "#cf7bff" : "#9bff7a", heavy ? 18 : 12, 120);
+  addShake(heavy ? SHAKE_CAVEMAN : SHAKE_MISS);
+  emitMissCatch({ name: f.name, heavy }); // Sebastian wird sauer + speit Feuer
 }
 
 function startStorm(heavy) {
@@ -276,6 +327,28 @@ function update(dt) {
     state.storm.age += dt;
     if (state.storm.age > state.storm.duration) state.storm = null;
   }
+
+  // Partikel bewegen (mit leichter Schwerkraft)
+  for (const p of state.particles) {
+    p.x += p.vx * dt;
+    p.y += p.vy * dt;
+    p.vy += 180 * dt;
+    p.life -= dt;
+  }
+  if (state.particles.length) {
+    state.particles = state.particles.filter((p) => p.life > 0);
+  }
+
+  // Screenshake abklingen
+  if (state.shakeMag > 0) {
+    state.shakeMag = Math.max(0, state.shakeMag - SHAKE_DECAY * dt);
+  }
+
+  // Sebastian: Stimmung kurz halten, dann zurück zu neutral
+  if (state.sebastian.timer > 0) {
+    state.sebastian.timer -= dt;
+    if (state.sebastian.timer <= 0) state.sebastian.mood = "neutral";
+  }
 }
 
 // ---- Zeichnen --------------------------------------------------------------
@@ -284,7 +357,7 @@ function drawSky() {
   g.addColorStop(0, COLOR.skyTop);
   g.addColorStop(1, COLOR.skyBottom);
   ctx.fillStyle = g;
-  ctx.fillRect(0, 0, W, WATER_TOP);
+  ctx.fillRect(-30, -30, W + 60, WATER_TOP + 30);
 }
 
 function drawWater() {
@@ -292,7 +365,7 @@ function drawWater() {
   g.addColorStop(0, COLOR.waterTop);
   g.addColorStop(1, COLOR.waterBottom);
   ctx.fillStyle = g;
-  ctx.fillRect(0, WATER_TOP, W, WATER_BOTTOM - WATER_TOP);
+  ctx.fillRect(-30, WATER_TOP, W + 60, WATER_BOTTOM - WATER_TOP);
 
   ctx.strokeStyle = "rgba(255,255,255,0.10)";
   ctx.lineWidth = 2;
@@ -310,7 +383,7 @@ function drawWater() {
 
 function drawDock() {
   ctx.fillStyle = COLOR.dock;
-  ctx.fillRect(0, WATER_BOTTOM, W, H - WATER_BOTTOM);
+  ctx.fillRect(-30, WATER_BOTTOM, W + 60, H - WATER_BOTTOM + 30);
   ctx.strokeStyle = COLOR.dockDark;
   ctx.lineWidth = 3;
   for (let x = 0; x <= W; x += 80) {
@@ -416,6 +489,111 @@ function drawFloater(f) {
 
   // Name (giftig getönt)
   drawLabel(f.name, x, y - r - 14, f.isCaveman ? "#ecc8ff" : "#c9ffb0");
+}
+
+// Sebastian-"Gott" am oberen Ufer — gezeichnete Figur (KEIN Foto, DSGVO):
+// Wolke + oranger Anthropic-Sunburst-Heiligenschein, schaut auf den Manikin runter.
+const SEB = { x: W / 2, y: 48 };
+
+function drawCloud(cx, cy, color) {
+  ctx.fillStyle = color;
+  const puffs = [
+    [-26, 6, 0.9], [-12, -2, 1.15], [4, -5, 1.25],
+    [20, -2, 1.05], [32, 7, 0.85], [2, 9, 1.35],
+  ];
+  for (const [dx, dy, s] of puffs) {
+    ctx.beginPath();
+    ctx.arc(cx + dx, cy + dy, 15 * s, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function drawFire(x, y, heavy) {
+  const len = heavy ? 78 : 44;
+  const spread = heavy ? 17 : 11;
+  const n = heavy ? 16 : 10;
+  for (let i = 0; i < n; i++) {
+    const p = i / n;
+    const fy = y + p * len + Math.sin(state.time * 22 + i) * 2;
+    const fx = x + Math.sin(state.time * 16 + i * 1.7) * spread * (0.3 + p);
+    const r = (1 - p) * (heavy ? 9 : 6) + 2;
+    ctx.fillStyle = p < 0.4 ? "#fff2b0" : p < 0.7 ? "#ff9a3c" : "#e8442a";
+    ctx.globalAlpha = 0.85 * (1 - p * 0.5);
+    ctx.beginPath();
+    ctx.arc(fx, fy, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function drawSebastian() {
+  const s = state.sebastian;
+  const mood = s.mood;
+  const t = state.time;
+
+  // Heiligenschein (Anthropic-Sunburst) — strahlt bei Rettung
+  const pulse = 1 + Math.sin(t * 4) * (mood === "happy" ? 0.13 : 0.04);
+  const haloR = (mood === "happy" ? 47 : 40) * pulse;
+  ctx.globalAlpha = mood === "angry" ? 0.45 : mood === "happy" ? 1 : 0.85;
+  drawSunburst(SEB.x, SEB.y, haloR, mood === "happy" ? "#ffb070" : "#e8924f", 12);
+  ctx.globalAlpha = 1;
+
+  // Wolke (Basis) — bei Wut dunkle Gewitterwolke
+  drawCloud(SEB.x, SEB.y + 18, mood === "angry" ? "#5b6470" : "#f2f5f8");
+
+  // Kopf
+  ctx.fillStyle = "#f4d9b8";
+  ctx.beginPath();
+  ctx.arc(SEB.x, SEB.y, 20, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = "#2a2a2a";
+  if (mood === "angry") {
+    // zusammengekniffene Augen + finstere Brauen
+    ctx.fillRect(SEB.x - 11, SEB.y - 2, 7, 2.5);
+    ctx.fillRect(SEB.x + 4, SEB.y - 2, 7, 2.5);
+    ctx.strokeStyle = "#2a2a2a";
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(SEB.x - 12, SEB.y - 8);
+    ctx.lineTo(SEB.x - 4, SEB.y - 4);
+    ctx.moveTo(SEB.x + 12, SEB.y - 8);
+    ctx.lineTo(SEB.x + 4, SEB.y - 4);
+    ctx.stroke();
+    // offener Mund + Feuer
+    ctx.fillStyle = "#3a1a10";
+    ctx.beginPath();
+    ctx.ellipse(SEB.x, SEB.y + 9, 6, 5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    drawFire(SEB.x, SEB.y + 12, s.heavy);
+  } else {
+    // freundliche Augen
+    ctx.beginPath();
+    ctx.arc(SEB.x - 7, SEB.y - 2, 2.3, 0, Math.PI * 2);
+    ctx.arc(SEB.x + 7, SEB.y - 2, 2.3, 0, Math.PI * 2);
+    ctx.fill();
+    // Mund: strahlendes Lächeln bei Rettung, sonst sanft
+    ctx.strokeStyle = "#2a2a2a";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    if (mood === "happy") {
+      ctx.arc(SEB.x, SEB.y + 3, 7, 0.15 * Math.PI, 0.85 * Math.PI);
+    } else {
+      ctx.arc(SEB.x, SEB.y + 5, 5, 0.2 * Math.PI, 0.8 * Math.PI);
+    }
+    ctx.stroke();
+  }
+}
+
+function drawParticles() {
+  for (const p of state.particles) {
+    ctx.globalAlpha = Math.max(0, p.life / p.maxLife);
+    ctx.fillStyle = p.color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  ctx.globalAlpha = 1;
 }
 
 function drawLabel(text, cx, cy, textColor = "#fff") {
@@ -590,16 +768,32 @@ function roundRect(x, y, w, h, r) {
 
 function render() {
   ctx.clearRect(0, 0, W, H);
+
+  // Screenshake nur aufs Spielfeld (HUD/Overlay bleiben ruhig)
+  let sx = 0;
+  let sy = 0;
+  if (state.shakeMag > 0.1) {
+    sx = (Math.random() - 0.5) * 2 * state.shakeMag;
+    sy = (Math.random() - 0.5) * 2 * state.shakeMag;
+  }
+  ctx.save();
+  ctx.translate(sx, sy);
+
   drawSky();
   drawWater();
   for (const f of state.floaters) drawFloater(f);
   for (const d of state.ducks) drawDuck(d);
   drawDock();
+  drawSebastian(); // Gott am oberen Ufer (speit ggf. Feuer nach unten)
 
   const hook = getHook();
   drawManikin(hook);
   drawCast();
-  drawStorm(); // Blitz + Sicht-Debuff über dem Spielfeld
+  drawParticles();
+
+  ctx.restore();
+
+  drawStorm(); // Vollbild-Blitz + Sicht-Debuff, ohne Shake
   drawToast();
   drawHUD();
 }
@@ -627,6 +821,10 @@ function startGame() {
   state.toast = null;
   state.storm = null;
   state.cast = null;
+  state.particles = [];
+  state.shakeMag = 0;
+  state.sebastian.mood = "neutral";
+  state.sebastian.timer = 0;
   state.spawnTimer = 0;
   state.floaterSpawnTimer = 1.0;
   deck = shuffle(MEMBERS.slice()); // Mitglieder-Deck neu mischen
@@ -669,5 +867,17 @@ function endGame() {
 
 document.getElementById("startBtn").addEventListener("click", startGame);
 document.getElementById("restartBtn").addEventListener("click", startGame);
+
+// Sebastian reagiert: strahlt bei Rettung, wird sauer + speit Feuer bei Fehlfang.
+onRescue(() => {
+  state.sebastian.mood = "happy";
+  state.sebastian.timer = 0.8;
+  state.sebastian.heavy = false;
+});
+onMissCatch((info) => {
+  state.sebastian.mood = "angry";
+  state.sebastian.timer = info.heavy ? 1.0 : 0.7;
+  state.sebastian.heavy = info.heavy;
+});
 
 requestAnimationFrame(loop); // Render-Loop läuft; Timer/Spawns erst ab "playing"
