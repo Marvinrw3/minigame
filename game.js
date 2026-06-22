@@ -12,6 +12,8 @@ const H = canvas.height; // 600
 const WATER_TOP = 90; // darüber: Himmel/oberes Ufer (später: Sebastian-Gott)
 const WATER_BOTTOM = 510; // darunter: Holzsteg, auf dem der Manikin steht
 const GAME_DURATION = 60; // Sekunden
+// TODO: nach dem Vercel-Deploy durch die echte Spiel-URL ersetzen
+const GAME_URL = "https://duck-rescue.vercel.app";
 
 // ---- Balancing (später anpassbar) ------------------------------------------
 const MAX_DUCKS = 8; // gleichzeitig im Wasser
@@ -966,8 +968,50 @@ function endGame() {
   endScreen.classList.remove("hidden");
 }
 
+// Ergebnis teilen: navigator.share, sonst in die Zwischenablage kopieren
+async function shareResult() {
+  const text =
+    `🦆 Duck Rescue (SKAILE Challenge): ${state.rescued.length} Mitglieder gerettet, ` +
+    `${state.score} Punkte! Spiel: ${GAME_URL}`;
+  if (navigator.share) {
+    try {
+      await navigator.share({ title: "Duck Rescue", text });
+      return;
+    } catch (e) {
+      /* abgebrochen oder nicht unterstützt → kopieren */
+    }
+  }
+  try {
+    await navigator.clipboard.writeText(text);
+    flashShare("In Zwischenablage kopiert! ✓");
+  } catch (e) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    document.body.appendChild(ta);
+    ta.select();
+    try {
+      document.execCommand("copy");
+      flashShare("Kopiert! ✓");
+    } catch (_) {
+      flashShare("Kopieren nicht möglich");
+    }
+    ta.remove();
+  }
+}
+
+function flashShare(msg) {
+  const btn = document.getElementById("shareBtn");
+  if (btn._t) clearTimeout(btn._t);
+  if (!btn._orig) btn._orig = btn.textContent;
+  btn.textContent = msg;
+  btn._t = setTimeout(() => {
+    btn.textContent = btn._orig;
+  }, 1700);
+}
+
 document.getElementById("startBtn").addEventListener("click", startGame);
 document.getElementById("restartBtn").addEventListener("click", startGame);
+document.getElementById("shareBtn").addEventListener("click", shareResult);
 
 // Sebastian reagiert: strahlt bei Rettung, wird sauer + speit Feuer bei Fehlfang.
 onRescue(() => {

@@ -143,3 +143,20 @@ canvas {
 .btn:hover {
   background: #c15f3c;
 }
+
+.end-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.btn-secondary {
+  background: transparent;
+  border: 1px solid #d97757;
+  color: #f0b49c;
+}
+
+.btn-secondary:hover {
+  background: rgba(217, 119, 87, 0.15);
+}
