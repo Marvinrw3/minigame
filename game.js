@@ -542,11 +542,11 @@ function drawFloater(f) {
   drawLabel(f.name, x, y - r - 14, f.isCaveman ? "#ecc8ff" : "#c9ffb0");
 }
 
-// Sebastian-"Gott" am oberen Ufer — gezeichnete Figur (KEIN Foto, DSGVO):
-// Wolke + oranger Anthropic-Sunburst-Heiligenschein, schaut auf den Manikin runter.
-const SEB = { x: W / 2, y: 48 };
+// Sebastian-"Gott"/Meister am oberen Ufer — gezeichnete Figur (KEIN Foto, DSGVO):
+// mächtige Aura, doppelter Anthropic-Sunburst, Heiligenschein-Ring, Wolkenthron.
+const SEB = { x: W / 2, y: 54 };
 
-function drawCloud(cx, cy, color) {
+function drawCloud(cx, cy, color, scale = 1) {
   ctx.fillStyle = color;
   const puffs = [
     [-26, 6, 0.9], [-12, -2, 1.15], [4, -5, 1.25],
@@ -554,15 +554,15 @@ function drawCloud(cx, cy, color) {
   ];
   for (const [dx, dy, s] of puffs) {
     ctx.beginPath();
-    ctx.arc(cx + dx, cy + dy, 15 * s, 0, Math.PI * 2);
+    ctx.arc(cx + dx * scale, cy + dy * scale, 15 * s * scale, 0, Math.PI * 2);
     ctx.fill();
   }
 }
 
 function drawFire(x, y, heavy) {
-  const len = heavy ? 78 : 44;
-  const spread = heavy ? 17 : 11;
-  const n = heavy ? 16 : 10;
+  const len = heavy ? 96 : 54;
+  const spread = heavy ? 19 : 12;
+  const n = heavy ? 20 : 12;
   for (let i = 0; i < n; i++) {
     const p = i / n;
     const fy = y + p * len + Math.sin(state.time * 22 + i) * 2;
@@ -581,59 +581,94 @@ function drawSebastian() {
   const s = state.sebastian;
   const mood = s.mood;
   const t = state.time;
+  const cx = SEB.x;
+  const cy = SEB.y + Math.sin(t * 1.2) * 2; // sanftes göttliches Schweben
+  const happy = mood === "happy";
+  const angry = mood === "angry";
 
-  // Heiligenschein (Anthropic-Sunburst) — strahlt bei Rettung
-  const pulse = 1 + Math.sin(t * 4) * (mood === "happy" ? 0.13 : 0.04);
-  const haloR = (mood === "happy" ? 47 : 40) * pulse;
-  ctx.globalAlpha = mood === "angry" ? 0.45 : mood === "happy" ? 1 : 0.85;
-  drawSunburst(SEB.x, SEB.y, haloR, mood === "happy" ? "#ffb070" : "#e8924f", 12);
+  // 1) Göttliche Aura (großer weicher Schein)
+  const auraR = 122 + (happy ? 18 : 0) + Math.sin(t * 3) * 4;
+  const auraCol = angry ? "120,40,40" : happy ? "255,200,120" : "240,160,90";
+  const aura = ctx.createRadialGradient(cx, cy, 10, cx, cy, auraR);
+  aura.addColorStop(0, `rgba(${auraCol},${angry ? 0.34 : 0.42})`);
+  aura.addColorStop(1, `rgba(${auraCol},0)`);
+  ctx.fillStyle = aura;
+  ctx.beginPath();
+  ctx.arc(cx, cy, auraR, 0, Math.PI * 2);
+  ctx.fill();
+
+  // 2) Mächtiger Sunburst-Heiligenschein (zwei rotierte Lagen)
+  const pulse = 1 + Math.sin(t * 4) * (happy ? 0.1 : 0.04);
+  const rayOuter = angry ? "#9a4a2a" : happy ? "#ffc070" : "#ee9a4f";
+  const rayInner = angry ? "#7a3520" : happy ? "#ffe6a8" : "#f6b260";
+  ctx.globalAlpha = angry ? 0.6 : 0.92;
+  drawSunburst(cx, cy, 66 * pulse, rayOuter, 12, t * 0.15);
+  drawSunburst(cx, cy, 46 * pulse, rayInner, 12, Math.PI / 12 - t * 0.15);
   ctx.globalAlpha = 1;
 
-  // Wolke (Basis) — bei Wut dunkle Gewitterwolke
-  drawCloud(SEB.x, SEB.y + 18, mood === "angry" ? "#5b6470" : "#f2f5f8");
+  // 3) Goldener Heiligenschein-Ring hinter dem Kopf
+  ctx.strokeStyle = angry ? "rgba(180,140,90,0.5)" : "rgba(255,214,140,0.95)";
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.arc(cx, cy - 2, 34, 0, Math.PI * 2);
+  ctx.stroke();
 
-  // Kopf
+  // 4) Wolken-Thron (breit, geschichtet)
+  drawCloud(cx, cy + 40, angry ? "#3f4751" : "#dfe7ee", 1.7);
+  drawCloud(cx, cy + 30, angry ? "#566270" : "#f3f7fb", 1.25);
+
+  // 5) Kopf (groß)
   ctx.fillStyle = "#f4d9b8";
   ctx.beginPath();
-  ctx.arc(SEB.x, SEB.y, 20, 0, Math.PI * 2);
+  ctx.arc(cx, cy, 24, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = "#2a2a2a";
-  if (mood === "angry") {
+  if (angry) {
     // zusammengekniffene Augen + finstere Brauen
-    ctx.fillRect(SEB.x - 11, SEB.y - 2, 7, 2.5);
-    ctx.fillRect(SEB.x + 4, SEB.y - 2, 7, 2.5);
+    ctx.fillRect(cx - 13, cy - 2, 8, 3);
+    ctx.fillRect(cx + 5, cy - 2, 8, 3);
     ctx.strokeStyle = "#2a2a2a";
-    ctx.lineWidth = 2.5;
+    ctx.lineWidth = 3;
     ctx.beginPath();
-    ctx.moveTo(SEB.x - 12, SEB.y - 8);
-    ctx.lineTo(SEB.x - 4, SEB.y - 4);
-    ctx.moveTo(SEB.x + 12, SEB.y - 8);
-    ctx.lineTo(SEB.x + 4, SEB.y - 4);
+    ctx.moveTo(cx - 14, cy - 10);
+    ctx.lineTo(cx - 5, cy - 5);
+    ctx.moveTo(cx + 14, cy - 10);
+    ctx.lineTo(cx + 5, cy - 5);
     ctx.stroke();
     // offener Mund + Feuer
     ctx.fillStyle = "#3a1a10";
     ctx.beginPath();
-    ctx.ellipse(SEB.x, SEB.y + 9, 6, 5, 0, 0, Math.PI * 2);
+    ctx.ellipse(cx, cy + 11, 7, 6, 0, 0, Math.PI * 2);
     ctx.fill();
-    drawFire(SEB.x, SEB.y + 12, s.heavy);
+    drawFire(cx, cy + 15, s.heavy);
   } else {
     // freundliche Augen
     ctx.beginPath();
-    ctx.arc(SEB.x - 7, SEB.y - 2, 2.3, 0, Math.PI * 2);
-    ctx.arc(SEB.x + 7, SEB.y - 2, 2.3, 0, Math.PI * 2);
+    ctx.arc(cx - 8, cy - 3, 2.7, 0, Math.PI * 2);
+    ctx.arc(cx + 8, cy - 3, 2.7, 0, Math.PI * 2);
     ctx.fill();
     // Mund: strahlendes Lächeln bei Rettung, sonst sanft
     ctx.strokeStyle = "#2a2a2a";
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 2.4;
     ctx.beginPath();
-    if (mood === "happy") {
-      ctx.arc(SEB.x, SEB.y + 3, 7, 0.15 * Math.PI, 0.85 * Math.PI);
+    if (happy) {
+      ctx.arc(cx, cy + 4, 9, 0.15 * Math.PI, 0.85 * Math.PI);
     } else {
-      ctx.arc(SEB.x, SEB.y + 5, 5, 0.2 * Math.PI, 0.8 * Math.PI);
+      ctx.arc(cx, cy + 6, 6, 0.2 * Math.PI, 0.8 * Math.PI);
     }
     ctx.stroke();
   }
+
+  // 6) Dezentes Meister-Label
+  ctx.font = "700 11px system-ui, sans-serif";
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  ctx.shadowColor = "rgba(0,0,0,0.45)";
+  ctx.shadowBlur = 4;
+  ctx.fillStyle = angry ? "#f0c89a" : "#ffe1a6";
+  ctx.fillText("✦ SEBASTIAN ✦", cx, cy + 66);
+  ctx.shadowBlur = 0;
 }
 
 function drawParticles() {
@@ -660,9 +695,10 @@ function drawLabel(text, cx, cy, textColor = "#fff") {
   ctx.fillText(text, cx, cy + 1);
 }
 
-function drawSunburst(x, y, r, color, rays = 8) {
+function drawSunburst(x, y, r, color, rays = 8, rot = 0) {
   ctx.save();
   ctx.translate(x, y);
+  ctx.rotate(rot);
   ctx.fillStyle = color;
   for (let i = 0; i < rays; i++) {
     ctx.rotate((Math.PI * 2) / rays);
