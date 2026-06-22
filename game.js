@@ -20,6 +20,24 @@ const DUCK_POINTS = 10; // Punkte pro geretteter Ente
 const DUCK_RADIUS = 16; // Körperradius
 const CATCH_TOLERANCE = 14; // zusätzlicher Fang-Radius um den Haken
 
+// Giftige Floater (Strafmechanik) — echte Tool-Namen aus plan/spielkonzept.md
+const POISON_NAMES = [
+  "caveman", "council", "grill-me", "nano-banana", "firecrawl", "n8n",
+  "meta-ads", "playwright", "superpowers", "claude-ads", "claude-seo",
+];
+const MAX_FLOATERS = 3; // gleichzeitig im Wasser
+const FLOATER_SPAWN_INTERVAL = 2.2; // Sekunden zwischen Floater-Spawns
+const FLOATER_PENALTY = 15; // Minuspunkte normaler Floater
+const CAVEMAN_PENALTY = 30; // Minuspunkte caveman (härtere Strafe)
+const FLOATER_RADIUS = 15;
+const CAVEMAN_RADIUS = 20;
+
+// Gewitter / Sicht-Debuff bei Fehlfang
+const STORM_DURATION = 1.2; // Sekunden
+const STORM_DARK = 0.36; // Abdunkelung 0..1
+const CAVEMAN_STORM_DURATION = 3.6; // caveman: länger
+const CAVEMAN_STORM_DARK = 0.72; // caveman: dunkler
+
 // ---- Farben (Anthropic-/Claude-Code-Look) ----------------------------------
 const COLOR = {
   anthropic: "#D97757",
@@ -34,6 +52,10 @@ const COLOR = {
   duck: "#f6c945",
   duckDark: "#e0b227",
   beak: "#e8852b",
+  poison: "#2f8f3f",
+  poisonGlow: "60,200,80",
+  caveman: "#5a1d6e",
+  cavemanGlow: "150,50,190",
 };
 
 // ---- Spielzustand ----------------------------------------------------------
@@ -45,9 +67,12 @@ const state = {
   mouse: { x: W / 2, y: 300 },
   cast: null, // { x, y, age } — kurzer Auswurf-Effekt beim Klick
   ducks: [], // aktive Enten im Wasser
+  floaters: [], // giftige Tools im Wasser
   rescued: [], // gerettete Mitglieder (für Endscreen, Schritt 4)
   toast: null, // { text, age }
+  storm: null, // { age, duration, intensity, boltX, heavy }
   spawnTimer: 0,
+  floaterSpawnTimer: 1.0,
 };
 
 // ---- Mitglieder-"Deck" (ohne Wiederholung ausgeben) ------------------------
@@ -101,14 +126,24 @@ function getHook() {
 function tryCatch(hook) {
   let best = null;
   let bestDist = Infinity;
+  let bestKind = null;
   for (const d of state.ducks) {
     const dist = Math.hypot(d.x - hook.x, d.y - hook.y);
     if (dist < d.radius + CATCH_TOLERANCE && dist < bestDist) {
       best = d;
       bestDist = dist;
+      bestKind = "duck";
     }
   }
-  if (best) catchDuck(best);
+  for (const f of state.floaters) {
+    const dist = Math.hypot(f.x - hook.x, f.y - hook.y);
+    if (dist < f.radius + CATCH_TOLERANCE && dist < bestDist) {
+      best = f;
+      bestDist = dist;
+      bestKind = "floater";
+    }
+  }
+  if (best) (bestKind === "duck" ? catchDuck : catchFloater)(best);
 }
 
 function catchDuck(d) {
@@ -125,6 +160,42 @@ function showToast(text) {
   state.toast = { text, age: 0 };
 }
 
+// Zentraler Fehlfang-Hook — Schritt 5 (Sebastian wird sauer/spuckt Feuer)
+// hängt sich hier per onMissCatch(...) an, ohne diese Logik anzufassen.
+const missCatchListeners = [];
+function onMissCatch(fn) {
+  missCatchListeners.push(fn);
+}
+function emitMissCatch(info) {
+  for (const fn of missCatchListeners) fn(info);
+}
+
+// Donner-Sound (relativer Pfad). Abspielen erfolgt im Klick-Kontext = User-Geste.
+const donnerSound = new Audio("assets/donner.mp3");
+function playDonner() {
+  donnerSound.currentTime = 0;
+  donnerSound.play().catch(() => {});
+}
+
+function catchFloater(f) {
+  state.floaters = state.floaters.filter((x) => x !== f);
+  const heavy = f.isCaveman;
+  state.score -= heavy ? CAVEMAN_PENALTY : FLOATER_PENALTY;
+  startStorm(heavy);
+  playDonner();
+  emitMissCatch({ name: f.name, heavy }); // Schritt 5: Sebastians Feuer-Reaktion
+}
+
+function startStorm(heavy) {
+  state.storm = {
+    age: 0,
+    duration: heavy ? CAVEMAN_STORM_DURATION : STORM_DURATION,
+    intensity: heavy ? CAVEMAN_STORM_DARK : STORM_DARK,
+    heavy,
+    boltX: 120 + Math.random() * (W - 240),
+  };
+}
+
 // ---- Spawning --------------------------------------------------------------
 function spawnDuck() {
   const fromLeft = Math.random() < 0.5;
@@ -136,6 +207,22 @@ function spawnDuck() {
     y,
     vx: fromLeft ? speed : -speed,
     radius: DUCK_RADIUS,
+    phase: Math.random() * Math.PI * 2,
+  });
+}
+
+function spawnFloater() {
+  const name = POISON_NAMES[Math.floor(Math.random() * POISON_NAMES.length)];
+  const isCaveman = name === "caveman";
+  const fromLeft = Math.random() < 0.5;
+  const speed = 26 + Math.random() * 22;
+  state.floaters.push({
+    name,
+    isCaveman,
+    x: fromLeft ? -30 : W + 30,
+    y: WATER_TOP + 46 + Math.random() * (WATER_BOTTOM - WATER_TOP - 76),
+    vx: fromLeft ? speed : -speed,
+    radius: isCaveman ? CAVEMAN_RADIUS : FLOATER_RADIUS,
     phase: Math.random() * Math.PI * 2,
   });
 }
@@ -166,6 +253,15 @@ function update(dt) {
       spawnDuck();
       state.spawnTimer = SPAWN_INTERVAL;
     }
+
+    // Giftige Floater bewegen + Nachschub
+    for (const f of state.floaters) f.x += f.vx * dt;
+    state.floaters = state.floaters.filter((f) => f.x > -50 && f.x < W + 50);
+    state.floaterSpawnTimer -= dt;
+    if (state.floaterSpawnTimer <= 0 && state.floaters.length < MAX_FLOATERS) {
+      spawnFloater();
+      state.floaterSpawnTimer = FLOATER_SPAWN_INTERVAL;
+    }
   }
 
   if (state.cast) {
@@ -175,6 +271,10 @@ function update(dt) {
   if (state.toast) {
     state.toast.age += dt;
     if (state.toast.age > 1.8) state.toast = null;
+  }
+  if (state.storm) {
+    state.storm.age += dt;
+    if (state.storm.age > state.storm.duration) state.storm = null;
   }
 }
 
@@ -277,14 +377,55 @@ function drawDuck(d) {
   drawLabel(d.member.name, x, y - 27);
 }
 
-function drawLabel(text, cx, cy) {
+function drawFloater(f) {
+  const bob = Math.sin(state.time * 2 + f.phase) * 2.5;
+  const x = f.x;
+  const y = f.y + bob;
+  const r = f.radius;
+  const glowCol = f.isCaveman ? COLOR.cavemanGlow : COLOR.poisonGlow;
+
+  // giftiges Glühen
+  const glow = ctx.createRadialGradient(x, y, 2, x, y, r * 2.3);
+  glow.addColorStop(0, `rgba(${glowCol},0.55)`);
+  glow.addColorStop(1, `rgba(${glowCol},0)`);
+  ctx.fillStyle = glow;
+  ctx.beginPath();
+  ctx.arc(x, y, r * 2.3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Körper (Giftklecks)
+  ctx.fillStyle = f.isCaveman ? COLOR.caveman : COLOR.poison;
+  ctx.beginPath();
+  ctx.ellipse(x, y, r, r * 0.82, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.strokeStyle = "rgba(0,0,0,0.25)";
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // aufsteigende Bläschen ("Blubbern")
+  const bubbleCol = f.isCaveman ? "220,170,245" : "190,255,170";
+  for (let i = 0; i < 3; i++) {
+    const t = (state.time * 0.6 + f.phase + i * 0.34) % 1;
+    const by = y + r * 0.5 - t * (r * 1.5);
+    const ba = (1 - t) * 0.55;
+    ctx.fillStyle = `rgba(${bubbleCol},${ba})`;
+    ctx.beginPath();
+    ctx.arc(x + Math.sin((t + i) * 6) * r * 0.4, by, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Name (giftig getönt)
+  drawLabel(f.name, x, y - r - 14, f.isCaveman ? "#ecc8ff" : "#c9ffb0");
+}
+
+function drawLabel(text, cx, cy, textColor = "#fff") {
   ctx.font = "bold 13px system-ui, sans-serif";
   const w = ctx.measureText(text).width + 14;
   const h = 20;
   ctx.fillStyle = "rgba(15,15,15,0.6)";
   roundRect(cx - w / 2, cy - h / 2, w, h, 7);
   ctx.fill();
-  ctx.fillStyle = "#fff";
+  ctx.fillStyle = textColor;
   ctx.textAlign = "center";
   ctx.textBaseline = "middle";
   ctx.fillText(text, cx, cy + 1);
@@ -357,6 +498,51 @@ function drawCast() {
   ctx.stroke();
 }
 
+function drawStorm() {
+  if (!state.storm) return;
+  const s = state.storm;
+  const t = s.age / s.duration;
+
+  // Sicht-Debuff: Bildschirm abdunkeln, letzte 40 % ausfaden
+  let dark = s.intensity;
+  if (t > 0.6) dark *= Math.max(0, 1 - (t - 0.6) / 0.4);
+  ctx.fillStyle = `rgba(6,10,24,${dark})`;
+  ctx.fillRect(0, 0, W, H);
+
+  // Blitz: heller Flash + Zacke kurz am Anfang
+  if (s.age < 0.18) {
+    const f = 1 - s.age / 0.18;
+    ctx.fillStyle = `rgba(255,255,255,${0.85 * f})`;
+    ctx.fillRect(0, 0, W, H);
+    drawBolt(s.boltX);
+    if (s.heavy) drawBolt(W - s.boltX);
+  } else if (s.heavy && Math.random() < 0.06) {
+    // caveman: vereinzelt nachzuckende Blitze
+    ctx.fillStyle = "rgba(255,255,255,0.22)";
+    ctx.fillRect(0, 0, W, H);
+    drawBolt(120 + Math.random() * (W - 240));
+  }
+}
+
+function drawBolt(startX) {
+  ctx.save();
+  ctx.strokeStyle = "rgba(255,255,255,0.95)";
+  ctx.lineWidth = 3;
+  ctx.shadowColor = "#bcd8ff";
+  ctx.shadowBlur = 16;
+  ctx.beginPath();
+  let x = startX;
+  let y = 0;
+  ctx.moveTo(x, y);
+  while (y < WATER_BOTTOM) {
+    y += 36 + Math.random() * 30;
+    x += (Math.random() - 0.5) * 64;
+    ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  ctx.restore();
+}
+
 function drawToast() {
   if (!state.toast) return;
   const t = state.toast;
@@ -416,12 +602,14 @@ function render() {
   ctx.clearRect(0, 0, W, H);
   drawSky();
   drawWater();
+  for (const f of state.floaters) drawFloater(f);
   for (const d of state.ducks) drawDuck(d);
   drawDock();
 
   const hook = getHook();
   drawManikin(hook);
   drawCast();
+  drawStorm(); // Blitz + Sicht-Debuff über dem Spielfeld
   drawToast();
   drawHUD();
 
@@ -438,6 +626,7 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
-// Start mit ein paar Enten, damit der See nicht leer ist.
+// Start mit ein paar Enten + einem Floater, damit der See nicht leer ist.
 for (let i = 0; i < 3; i++) spawnDuck();
+spawnFloater();
 requestAnimationFrame(loop);
