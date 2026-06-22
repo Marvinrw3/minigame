@@ -68,6 +68,20 @@ const COLOR = {
   cavemanGlow: "150,50,190",
 };
 
+// Variantenreiche Fang-Toasts ([Name] = Vorname der Ente) — zufällig pro Rettung
+const RESCUE_TOASTS = [
+  (n) => `Danke für die Rettung, ${n}`,
+  (n) => `Danke Claude Code fürs Retten, ${n}`,
+  (n) => `${n} gerettet — weg von den bösen Tools!`,
+  (n) => `Danke fürs Retten vor den bösen Tools, ${n}`,
+  (n) => `${n} ist in Sicherheit!`,
+  (n) => `${n} aus dem giftigen Wasser gefischt!`,
+  (n) => `Gerettet! Willkommen zurück, ${n}`,
+];
+function rescueToast(name) {
+  return RESCUE_TOASTS[Math.floor(Math.random() * RESCUE_TOASTS.length)](name);
+}
+
 // ---- Spielzustand ----------------------------------------------------------
 const state = {
   score: 0,
@@ -165,7 +179,7 @@ function catchDuck(d) {
   if (!state.rescued.some((m) => m.name === d.member.name)) {
     state.rescued.push(d.member);
   }
-  showToast("Danke für die Rettung, " + d.member.name);
+  showToast(rescueToast(d.member.name));
   playQuak();
   spawnParticles(d.x, d.y, "#ffe27a", 10, 90);
   addShake(SHAKE_CATCH);
