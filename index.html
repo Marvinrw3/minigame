@@ -14,26 +14,49 @@
 
         <div id="startScreen" class="overlay">
           <div class="panel">
-            <h2>🦆 Duck Rescue</h2>
-            <p>Du bist der <b>Manikin</b> und rettest in <b>60 Sekunden</b> so viele
-              <b>Community-Mitglieder</b> (Enten) wie möglich aus dem See.</p>
-            <p><b>Gefahr:</b> Angle keine giftigen Claude-Tools! Jeder Fehlfang gibt
-              <b>Minuspunkte</b> und löst ein <b>Gewitter</b> aus — <b>caveman</b> ist
-              am schlimmsten.</p>
-            <p><b>Steuerung:</b> Mit der <b>Maus</b> zielen, <b>Klick</b> zum Angeln.
-              Sebastian schaut als „Gott" vom Himmel zu.</p>
-            <button id="startBtn" class="btn">Start</button>
+            <span class="eyebrow">SKAILE · Building Challenge</span>
+            <h2 class="panel-title">🦆 Duck Rescue</h2>
+            <p class="lead">Rette in <b>60 Sekunden</b> so viele
+              <b>Community-Mitglieder</b> aus dem See, wie du schaffst.</p>
+            <ul class="brief">
+              <li>
+                <span class="brief-key">Ziel</span>
+                <span class="brief-val">Du bist der <b>Manikin</b> und fischst
+                  Mitglieder (Enten) aus dem Wasser.</span>
+              </li>
+              <li>
+                <span class="brief-key">Gefahr</span>
+                <span class="brief-val">Angle keine <b>giftigen Claude-Tools</b> —
+                  Minuspunkte + Gewitter. <b>caveman</b> ist am schlimmsten.</span>
+              </li>
+              <li>
+                <span class="brief-key">Steuerung</span>
+                <span class="brief-val"><b>Maus</b> zielen, <b>Klick</b> zum Angeln.
+                  <b>Sebastian</b> wacht als Meister über dem See.</span>
+              </li>
+            </ul>
+            <button id="startBtn" class="btn btn-primary">Spiel starten</button>
           </div>
         </div>
 
         <div id="endScreen" class="overlay hidden">
           <div class="panel">
-            <h2>Diese wertvollen Mitglieder wurden gerettet</h2>
-            <p id="finalScore" class="final-score"></p>
+            <span class="eyebrow">Zeit abgelaufen</span>
+            <h2 class="panel-title">Diese wertvollen Mitglieder wurden gerettet</h2>
+            <div class="stat-row">
+              <div class="stat">
+                <span class="stat-num" id="finalRescued">0</span>
+                <span class="stat-lbl">gerettet</span>
+              </div>
+              <div class="stat">
+                <span class="stat-num" id="finalScore">0</span>
+                <span class="stat-lbl">Punkte</span>
+              </div>
+            </div>
             <div id="rescuedList" class="rescued-list"></div>
             <div class="end-actions">
               <button id="shareBtn" class="btn btn-secondary">Ergebnis teilen / kopieren</button>
-              <button id="restartBtn" class="btn">Nochmal</button>
+              <button id="restartBtn" class="btn btn-primary">Nochmal</button>
             </div>
           </div>
         </div>

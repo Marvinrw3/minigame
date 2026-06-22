@@ -272,7 +272,7 @@ function addShake(m) {
 function catchFloater(f) {
   state.floaters = state.floaters.filter((x) => x !== f);
   const heavy = f.isCaveman;
-  state.score -= heavy ? CAVEMAN_PENALTY : FLOATER_PENALTY;
+  state.score = Math.max(0, state.score - (heavy ? CAVEMAN_PENALTY : FLOATER_PENALTY));
   startStorm(heavy);
   playDonner();
   spawnParticles(f.x, f.y, heavy ? "#cf7bff" : "#9bff7a", heavy ? 18 : 12, 120);
@@ -291,10 +291,29 @@ function startStorm(heavy) {
 }
 
 // ---- Spawning --------------------------------------------------------------
+// y so wählen, dass Enten sich vertikal nicht zu nah kommen (weniger Label-Überlappung)
+function pickDuckY() {
+  const minY = WATER_TOP + 46;
+  const maxY = WATER_BOTTOM - 30;
+  let y = minY + Math.random() * (maxY - minY);
+  for (let attempt = 0; attempt < 8; attempt++) {
+    let ok = true;
+    for (const d of state.ducks) {
+      if (Math.abs(d.y - y) < 38) {
+        ok = false;
+        break;
+      }
+    }
+    if (ok) break;
+    y = minY + Math.random() * (maxY - minY);
+  }
+  return y;
+}
+
 function spawnDuck() {
   const fromLeft = Math.random() < 0.5;
   const speed = 28 + Math.random() * 26;
-  const y = WATER_TOP + 46 + Math.random() * (WATER_BOTTOM - WATER_TOP - 76);
+  const y = pickDuckY();
   state.ducks.push({
     member: nextMember(),
     x: fromLeft ? -30 : W + 30,
@@ -730,31 +749,43 @@ function drawSunburst(x, y, r, color, rays = 8, rot = 0) {
 }
 
 function drawManikin(hook) {
-  const baseX = clamp(hook.x, 60, W - 60);
-  const baseY = WATER_BOTTOM - 6;
-  const tipX = baseX + 26;
-  const tipY = baseY - 58;
+  const baseX = clamp(hook.x, 70, W - 70);
+  const baseY = WATER_BOTTOM - 4;
+  const tipX = baseX + 34;
+  const tipY = baseY - 80;
 
-  ctx.fillStyle = "rgba(0,0,0,0.18)";
+  // Schatten
+  ctx.fillStyle = "rgba(0,0,0,0.20)";
   ctx.beginPath();
-  ctx.ellipse(baseX, baseY + 8, 26, 7, 0, 0, Math.PI * 2);
+  ctx.ellipse(baseX, baseY + 10, 34, 9, 0, 0, Math.PI * 2);
   ctx.fill();
 
+  // Körper (größer, mit dunkler Kontur)
   ctx.fillStyle = COLOR.anthropic;
-  roundRect(baseX - 16, baseY - 34, 32, 38, 9);
+  ctx.strokeStyle = COLOR.anthropicDark;
+  ctx.lineWidth = 2.5;
+  roundRect(baseX - 22, baseY - 50, 44, 54, 13);
   ctx.fill();
-  ctx.beginPath();
-  ctx.arc(baseX, baseY - 44, 14, 0, Math.PI * 2);
-  ctx.fill();
-  drawSunburst(baseX, baseY - 16, 8, "#fff7f2", 8);
+  ctx.stroke();
 
-  ctx.strokeStyle = "#5b3a23";
-  ctx.lineWidth = 3;
+  // Kopf
   ctx.beginPath();
-  ctx.moveTo(baseX + 8, baseY - 24);
+  ctx.arc(baseX, baseY - 62, 19, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Anthropic-Stern auf der Brust
+  drawSunburst(baseX, baseY - 26, 12, "#fff7f2", 8);
+
+  // Angelrute
+  ctx.strokeStyle = "#5b3a23";
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(baseX + 12, baseY - 34);
   ctx.lineTo(tipX, tipY);
   ctx.stroke();
 
+  // Schnur
   ctx.strokeStyle = COLOR.line;
   ctx.lineWidth = 1.5;
   ctx.beginPath();
@@ -762,6 +793,7 @@ function drawManikin(hook) {
   ctx.lineTo(hook.x, hook.y);
   ctx.stroke();
 
+  // Haken
   ctx.strokeStyle = "#dfe6ea";
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -790,16 +822,16 @@ function drawStorm() {
   ctx.fillStyle = `rgba(6,10,24,${dark})`;
   ctx.fillRect(0, 0, W, H);
 
-  // Blitz: heller Flash + Zacke kurz am Anfang
-  if (s.age < 0.18) {
-    const f = 1 - s.age / 0.18;
-    ctx.fillStyle = `rgba(255,255,255,${0.85 * f})`;
+  // Blitz: kurzer, dezenter Flash + Zacke (Sicht-Debuff bleibt klar sichtbar)
+  if (s.age < 0.09) {
+    const f = 1 - s.age / 0.09;
+    ctx.fillStyle = `rgba(255,255,255,${0.45 * f})`;
     ctx.fillRect(0, 0, W, H);
     drawBolt(s.boltX);
     if (s.heavy) drawBolt(W - s.boltX);
-  } else if (s.heavy && Math.random() < 0.06) {
+  } else if (s.heavy && Math.random() < 0.05) {
     // caveman: vereinzelt nachzuckende Blitze
-    ctx.fillStyle = "rgba(255,255,255,0.22)";
+    ctx.fillStyle = "rgba(255,255,255,0.15)";
     ctx.fillRect(0, 0, W, H);
     drawBolt(120 + Math.random() * (W - 240));
   }
@@ -941,8 +973,8 @@ function startGame() {
 
 function endGame() {
   state.phase = "ended";
-  document.getElementById("finalScore").textContent =
-    "Endpunktzahl: " + state.score;
+  document.getElementById("finalScore").textContent = state.score;
+  document.getElementById("finalRescued").textContent = state.rescued.length;
 
   const list = document.getElementById("rescuedList");
   list.innerHTML = "";
