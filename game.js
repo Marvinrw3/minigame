@@ -14,23 +14,27 @@ const WATER_BOTTOM = 510; // darunter: Holzsteg, auf dem der Manikin steht
 const GAME_DURATION = 60; // Sekunden
 
 // ---- Balancing (später anpassbar) ------------------------------------------
-const MAX_DUCKS = 7; // gleichzeitig im Wasser
-const SPAWN_INTERVAL = 0.9; // Sekunden zwischen Spawns
+const MAX_DUCKS = 8; // gleichzeitig im Wasser
+const SPAWN_INTERVAL = 0.8; // Sekunden zwischen Spawns
 const DUCK_POINTS = 10; // Punkte pro geretteter Ente
 const DUCK_RADIUS = 16; // Körperradius
 const CATCH_TOLERANCE = 14; // zusätzlicher Fang-Radius um den Haken
+const DUCK_LOST_PENALTY = 5; // Abzug, wenn ein Tool eine Ente schnappt
 
-// Giftige Floater (Strafmechanik) — echte Tool-Namen aus plan/spielkonzept.md
+// Giftige Floater (Strafmechanik) — echte Tool-/Skill-Namen aus Marvins Setup
 const POISON_NAMES = [
   "caveman", "council", "grill-me", "nano-banana", "firecrawl", "n8n",
   "meta-ads", "playwright", "superpowers", "claude-ads", "claude-seo",
+  "supabase", "vercel", "canva", "elevenlabs", "airtable", "apify",
+  "context7", "impeccable", "mcp-builder",
 ];
-const MAX_FLOATERS = 3; // gleichzeitig im Wasser
-const FLOATER_SPAWN_INTERVAL = 2.2; // Sekunden zwischen Floater-Spawns
+const MAX_FLOATERS = 4; // gleichzeitig im Wasser
+const FLOATER_SPAWN_INTERVAL = 1.8; // Sekunden zwischen Floater-Spawns
 const FLOATER_PENALTY = 15; // Minuspunkte normaler Floater
 const CAVEMAN_PENALTY = 30; // Minuspunkte caveman (härtere Strafe)
 const FLOATER_RADIUS = 15;
 const CAVEMAN_RADIUS = 20;
+const FLOATER_SPEED = 44; // Jagd-Tempo: Floater steuern auf die nächste Ente zu
 
 // Gewitter / Sicht-Debuff bei Fehlfang
 const STORM_DURATION = 1.2; // Sekunden
@@ -168,8 +172,31 @@ function catchDuck(d) {
   emitRescue({ name: d.member.name }); // Sebastian strahlt
 }
 
-function showToast(text) {
-  state.toast = { text, age: 0 };
+function showToast(text, color = "rgba(217,119,87,0.94)") {
+  state.toast = { text, age: 0, color };
+}
+
+// Nächste Ente zu einem Floater (für die Jagd-Logik)
+function nearestDuck(f) {
+  let best = null;
+  let bestD = Infinity;
+  for (const d of state.ducks) {
+    const dist = Math.hypot(d.x - f.x, d.y - f.y);
+    if (dist < bestD) {
+      best = d;
+      bestD = dist;
+    }
+  }
+  return best;
+}
+
+// Ente von einem Tool geschnappt → verloren (kleiner Abzug + Hinweis)
+function loseDuck(d) {
+  state.ducks = state.ducks.filter((x) => x !== d);
+  state.score = Math.max(0, state.score - DUCK_LOST_PENALTY);
+  showToast("Zu spät! " + d.member.name + " wurde geschnappt.", "rgba(90,100,112,0.95)");
+  spawnParticles(d.x, d.y, "#7b8794", 8, 70);
+  addShake(SHAKE_CATCH);
 }
 
 // Zentraler Fehlfang-Hook — Schritt 5 (Sebastian wird sauer/spuckt Feuer)
@@ -266,13 +293,14 @@ function spawnFloater() {
   const name = POISON_NAMES[Math.floor(Math.random() * POISON_NAMES.length)];
   const isCaveman = name === "caveman";
   const fromLeft = Math.random() < 0.5;
-  const speed = 26 + Math.random() * 22;
+  const drift = 26 + Math.random() * 22;
   state.floaters.push({
     name,
     isCaveman,
     x: fromLeft ? -30 : W + 30,
     y: WATER_TOP + 46 + Math.random() * (WATER_BOTTOM - WATER_TOP - 76),
-    vx: fromLeft ? speed : -speed,
+    vx: fromLeft ? drift : -drift, // Drift, falls keine Ente zum Jagen da ist
+    speed: (isCaveman ? FLOATER_SPEED + 6 : FLOATER_SPEED) + Math.random() * 8,
     radius: isCaveman ? CAVEMAN_RADIUS : FLOATER_RADIUS,
     phase: Math.random() * Math.PI * 2,
   });
@@ -305,9 +333,32 @@ function update(dt) {
       state.spawnTimer = SPAWN_INTERVAL;
     }
 
-    // Giftige Floater bewegen + Nachschub
-    for (const f of state.floaters) f.x += f.vx * dt;
-    state.floaters = state.floaters.filter((f) => f.x > -50 && f.x < W + 50);
+    // Giftige Floater JAGEN die nächste Ente (Hunting)
+    for (const f of state.floaters) {
+      const target = nearestDuck(f);
+      if (target) {
+        const dx = target.x - f.x;
+        const dy = target.y - f.y;
+        const d = Math.hypot(dx, dy) || 1;
+        f.x += (dx / d) * f.speed * dt;
+        f.y += (dy / d) * f.speed * dt;
+      } else {
+        f.x += f.vx * dt; // kein Ziel: weiterdriften
+      }
+    }
+    state.floaters = state.floaters.filter((f) => f.x > -60 && f.x < W + 60);
+
+    // Erwischt ein Floater eine Ente, ist sie verloren
+    const eaten = new Set();
+    for (const f of state.floaters) {
+      for (const d of state.ducks) {
+        if (!eaten.has(d) && Math.hypot(f.x - d.x, f.y - d.y) < f.radius + d.radius) {
+          eaten.add(d);
+        }
+      }
+    }
+    for (const d of eaten) loseDuck(d);
+
     state.floaterSpawnTimer -= dt;
     if (state.floaterSpawnTimer <= 0 && state.floaters.length < MAX_FLOATERS) {
       spawnFloater();
@@ -730,7 +781,7 @@ function drawToast() {
   const w = ctx.measureText(t.text).width + 28;
   const x = W / 2 - w / 2;
   const y = 56;
-  ctx.fillStyle = "rgba(217,119,87,0.94)";
+  ctx.fillStyle = t.color || "rgba(217,119,87,0.94)";
   roundRect(x, y, w, 34, 10);
   ctx.fill();
   ctx.fillStyle = "#fff";
