@@ -12,8 +12,8 @@ const H = canvas.height; // 600
 const WATER_TOP = 90; // darüber: Himmel/oberes Ufer (später: Sebastian-Gott)
 const WATER_BOTTOM = 510; // darunter: Holzsteg, auf dem der Manikin steht
 const GAME_DURATION = 60; // Sekunden
-// TODO: nach dem Vercel-Deploy durch die echte Spiel-URL ersetzen
-const GAME_URL = "https://duck-rescue.vercel.app";
+// Live-URL (Vercel) — wird im "Ergebnis teilen"-Text verwendet
+const GAME_URL = "https://minigame-delta-taupe.vercel.app";
 
 // ---- Balancing (später anpassbar) ------------------------------------------
 const MAX_DUCKS = 8; // gleichzeitig im Wasser
