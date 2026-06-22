@@ -9,7 +9,32 @@
   <body>
     <main>
       <h1>🦆 Duck Rescue</h1>
-      <canvas id="game" width="800" height="600"></canvas>
+      <div id="stage">
+        <canvas id="game" width="800" height="600"></canvas>
+
+        <div id="startScreen" class="overlay">
+          <div class="panel">
+            <h2>🦆 Duck Rescue</h2>
+            <p>Du bist der <b>Manikin</b> und rettest in <b>60 Sekunden</b> so viele
+              <b>Community-Mitglieder</b> (Enten) wie möglich aus dem See.</p>
+            <p><b>Gefahr:</b> Angle keine giftigen Claude-Tools! Jeder Fehlfang gibt
+              <b>Minuspunkte</b> und löst ein <b>Gewitter</b> aus — <b>caveman</b> ist
+              am schlimmsten.</p>
+            <p><b>Steuerung:</b> Mit der <b>Maus</b> zielen, <b>Klick</b> zum Angeln.
+              Sebastian schaut als „Gott" vom Himmel zu.</p>
+            <button id="startBtn" class="btn">Start</button>
+          </div>
+        </div>
+
+        <div id="endScreen" class="overlay hidden">
+          <div class="panel">
+            <h2>Diese wertvollen Mitglieder wurden gerettet</h2>
+            <p id="finalScore" class="final-score"></p>
+            <div id="rescuedList" class="rescued-list"></div>
+            <button id="restartBtn" class="btn">Nochmal</button>
+          </div>
+        </div>
+      </div>
       <p id="hint">Bewege die Maus, um die Angel zu zielen. Klick = auswerfen.</p>
     </main>
     <script src="members.js"></script>

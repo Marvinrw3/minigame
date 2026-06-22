@@ -62,7 +62,7 @@ const COLOR = {
 const state = {
   score: 0,
   timeLeft: GAME_DURATION,
-  running: true,
+  phase: "start", // "start" | "playing" | "ended"
   time: 0, // Gesamtzeit für Animationen
   mouse: { x: W / 2, y: 300 },
   cast: null, // { x, y, age } — kurzer Auswurf-Effekt beim Klick
@@ -107,7 +107,7 @@ canvas.addEventListener("mousemove", (e) => {
 });
 
 canvas.addEventListener("mousedown", (e) => {
-  if (!state.running) return;
+  if (state.phase !== "playing") return;
   state.mouse = toCanvasCoords(e);
   const hook = getHook();
   state.cast = { x: hook.x, y: hook.y, age: 0 }; // Auswurf
@@ -236,11 +236,11 @@ function clamp(v, min, max) {
 function update(dt) {
   state.time += dt;
 
-  if (state.running) {
+  if (state.phase === "playing") {
     state.timeLeft -= dt;
     if (state.timeLeft <= 0) {
       state.timeLeft = 0;
-      state.running = false;
+      endGame();
     }
 
     // Enten bewegen
@@ -583,16 +583,6 @@ function drawPill(x, y, text, align) {
   ctx.fillText(text, px + padX, y + h / 2 + 1);
 }
 
-function drawTimeUp() {
-  ctx.fillStyle = "rgba(0,0,0,0.45)";
-  ctx.fillRect(0, 0, W, H);
-  ctx.fillStyle = "#fff";
-  ctx.font = "bold 36px system-ui, sans-serif";
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText("Zeit abgelaufen", W / 2, H / 2);
-}
-
 function roundRect(x, y, w, h, r) {
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, r);
@@ -612,8 +602,6 @@ function render() {
   drawStorm(); // Blitz + Sicht-Debuff über dem Spielfeld
   drawToast();
   drawHUD();
-
-  if (!state.running) drawTimeUp();
 }
 
 // ---- Spiel-Loop ------------------------------------------------------------
@@ -626,7 +614,60 @@ function loop(now) {
   requestAnimationFrame(loop);
 }
 
-// Start mit ein paar Enten + einem Floater, damit der See nicht leer ist.
-for (let i = 0; i < 3; i++) spawnDuck();
-spawnFloater();
-requestAnimationFrame(loop);
+// ---- Spielzustand & UI-Overlays --------------------------------------------
+const startScreen = document.getElementById("startScreen");
+const endScreen = document.getElementById("endScreen");
+
+function startGame() {
+  state.score = 0;
+  state.timeLeft = GAME_DURATION;
+  state.ducks = [];
+  state.floaters = [];
+  state.rescued = [];
+  state.toast = null;
+  state.storm = null;
+  state.cast = null;
+  state.spawnTimer = 0;
+  state.floaterSpawnTimer = 1.0;
+  deck = shuffle(MEMBERS.slice()); // Mitglieder-Deck neu mischen
+  deckIndex = 0;
+  for (let i = 0; i < 3; i++) spawnDuck();
+  spawnFloater();
+  state.phase = "playing";
+  startScreen.classList.add("hidden");
+  endScreen.classList.add("hidden");
+}
+
+function endGame() {
+  state.phase = "ended";
+  document.getElementById("finalScore").textContent =
+    "Endpunktzahl: " + state.score;
+
+  const list = document.getElementById("rescuedList");
+  list.innerHTML = "";
+  if (state.rescued.length === 0) {
+    const p = document.createElement("p");
+    p.className = "empty";
+    p.textContent = "Diesmal niemand gerettet — versuch es nochmal!";
+    list.appendChild(p);
+  } else {
+    for (const m of state.rescued) {
+      const item = document.createElement("div");
+      item.className = "rescued-item";
+      const name = document.createElement("span");
+      name.className = "r-name";
+      name.textContent = m.name;
+      const role = document.createElement("span");
+      role.className = "r-role";
+      role.textContent = m.rolle;
+      item.append(name, role);
+      list.appendChild(item);
+    }
+  }
+  endScreen.classList.remove("hidden");
+}
+
+document.getElementById("startBtn").addEventListener("click", startGame);
+document.getElementById("restartBtn").addEventListener("click", startGame);
+
+requestAnimationFrame(loop); // Render-Loop läuft; Timer/Spawns erst ab "playing"
